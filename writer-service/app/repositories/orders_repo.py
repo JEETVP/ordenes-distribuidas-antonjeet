@@ -1,21 +1,18 @@
 from sqlalchemy import select
 from models import Order
 
-
 class OrdersRepository:
 
     def __init__(self, session):
-        self.session = session
+        self.session = session #conexion con la base de datos
 
-    async def exists(self, order_id: str):
+    def exists(self, order_id): #verifica que no haya otro objeto con el mismo id
 
-        query = select(Order).where(Order.order_id == order_id)
+        return self.session.query(Order)\
+            .filter(Order.order_id == order_id)\
+            .first() is not None
 
-        result = await self.session.execute(query)
-
-        return result.scalar_one_or_none() is not None
-
-    async def insert(self, order):
+    def insert(self, order):
 
         db_order = Order(
             order_id=order.order_id,
@@ -23,6 +20,5 @@ class OrdersRepository:
             items=[item.dict() for item in order.items]
         )
 
-        self.session.add(db_order)
-
-        await self.session.commit()
+        self.session.add(db_order) #se añade el objeto db_order a la base de datos
+        self.session.commit() #guarda el cambio

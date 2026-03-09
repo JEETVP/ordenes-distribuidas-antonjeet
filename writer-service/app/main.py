@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from datetime import datetime
 
-from db import AsyncSessionLocal
+from db import SessionLocal
 from schemas import InternalOrder
 from repositories.orders_repo import OrdersRepository
 from redis_client import redis_client
@@ -15,26 +15,22 @@ def root():
 
 
 @app.post("/internal/orders")
-async def create_order(order: InternalOrder):
+def create_order(order: InternalOrder): #validacion con internal order de schemas.py
 
-    async with AsyncSessionLocal() as session:
+    db = SessionLocal() #sesion para la transaccion
 
-        repo = OrdersRepository(session)
+    repo = OrdersRepository(db) #ejecuta las consultas para ver si existe la orden y hacer la insercion
 
-        exists = await repo.exists(order.order_id)
+    exists = repo.exists(order.order_id)
 
-        if not exists:
-            await repo.insert(order)
+    if not exists:
+        repo.insert(order)
 
-        redis_client.hset(
-            f"order:{order.order_id}",
-            mapping={
-                "status": "PERSISTED",
-                "last_update": datetime.utcnow().isoformat()
-            }
-        )
+    redis_client.hset( #modifica el estado en edis
+        f"order:{order.order_id}",
+        mapping={"status": "PERSISTED"}
+    )
 
-        return {
-            "order_id": order.order_id,
-            "status": "PERSISTED"
-        }
+    db.close() #cierra la conexion y devuelve el cambio de estado como respuesta
+
+    return {"order_id": order.order_id, "status": "PERSISTED"}

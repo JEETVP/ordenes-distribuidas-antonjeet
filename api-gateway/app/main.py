@@ -15,28 +15,28 @@ def root():
 
 
 @app.post("/orders")
-async def create_order(order: OrderCreate, request: Request):
+async def create_order(order: OrderCreate, request: Request): #tiene que recibir el esquema de order create
 
-    order_id = str(uuid.uuid4())
+    order_id = str(uuid.uuid4()) #identificador aleatorio como string
     request_id = request.headers.get("X-Request-Id", str(uuid.uuid4()))
 
-    redis_key = f"order:{order_id}"
+    redis_key = f"order:{order_id}" #asigna una clava para que podamos consultar en redis
 
     redis_client.hset(
         redis_key,
-        mapping={
+        mapping={ #guarda en redis con un estado inicial de recibido, pasa a persisted cuando lo recive el writer-service
             "status": "RECEIVED",
             "last_update": datetime.utcnow().isoformat()
         }
     )
 
-    payload = {
+    payload = { # define lo que tiene que enviar al writer service
         "order_id": order_id,
         "customer": order.customer,
         "items": [item.dict() for item in order.items]
     }
 
-    success = await send_order_to_writer(payload, request_id)
+    success = await send_order_to_writer(payload, request_id) #espera para mandar la orden al writer-service
 
     if not success:
         redis_client.hset(
@@ -47,7 +47,7 @@ async def create_order(order: OrderCreate, request: Request):
             }
         )
 
-    return {
+    return { #caso de exito e
         "order_id": order_id,
         "status": "RECEIVED"
     }
@@ -56,7 +56,7 @@ async def create_order(order: OrderCreate, request: Request):
 @app.get("/orders/{order_id}")
 def get_order(order_id: str):
 
-    redis_key = f"order:{order_id}"
+    redis_key = f"order:{order_id}" #busca con la clave de redis
 
     data = redis_client.hgetall(redis_key)
 

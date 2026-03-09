@@ -12,3 +12,5 @@ class Order(Base):
     customer = Column(String(255))
     items = Column(JSON)
     created_at = Column(TIMESTAMP, server_default=func.now())
+
+    #es lo que va a guardar la base de datos.

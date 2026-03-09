@@ -1,6 +1,5 @@
-version: "3.9"
-
 services:
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -25,28 +24,29 @@ services:
       interval: 5s
       retries: 5
 
-
-  api-gateway:
-    build: ./api-gateway
-    ports:
-      - "8000:8000"
-    env_file: .env
-    depends_on:
-      redis:
-        condition: service_healthy
-      writer-service:
-        condition: service_started
-
   writer-service:
     build: ./writer-service
     ports:
       - "8001:8001"
-    env_file: .env
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      writer-service:
+        condition: service_started
 
 volumes:
   pg_data:

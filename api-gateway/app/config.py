@@ -4,7 +4,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 WRITER_SERVICE_URL = os.getenv(
     "WRITER_SERVICE_URL",
-    "http://writer-service:8001"
+    "http://writer-service:8001" #es la ruta por la que puede comunicarse con el contenedor de writerservice
 )
 
 WRITER_TIMEOUT_SECONDS = float(

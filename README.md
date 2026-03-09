@@ -1,188 +1,191 @@
-# Distributed Orders
+Diseño de APP Distribuida de Órdenes
 
-Sistema distribuido de ingesta de órdenes con **FastAPI**, **Postgres**, y **Redis**.
+Nombres:
+Anton Betak Licea
+Roberto Villegas Ojeda
 
-## Arquitectura
+Número de Cuenta:
+190013
 
-### Diagrama de componentes
+Arquitectura del Sistema
 
-```mermaid
-flowchart TB
-    Client["🖥️ Cliente<br/>(curl / Postman / Front)"]
+El sistema está compuesto por cuatro elementos principales:
 
-    subgraph docker["Docker Network (docker-compose)"]
+Cliente (Swagger o curl)
 
-        subgraph gw["api-gateway · FastAPI · :8000"]
-            POST_orders["POST /orders<br/>→ 202 Accepted"]
-            GET_orders["GET /orders/{id}<br/>→ 200 OK"]
-        end
+API Gateway
 
-        subgraph ws["writer-service · FastAPI · :8001"]
-            POST_internal["POST /internal/orders<br/>→ 201 Created"]
-            upsert["upsert_order()<br/>idempotente: sólo inserta<br/>si order_id no existe"]
-        end
+Redis
 
-        Redis[("Redis :6379<br/><br/>Hash  order:{id}<br/>• status<br/>• last_update")]
+Writer Service con PostgreSQL
 
-        Postgres[("Postgres :5432<br/><br/>Tabla orders<br/>• order_id — PK varchar(36)<br/>• customer — varchar(255)<br/>• items — JSON<br/>• created_at — timestamp")]
-    end
+Esta arquitectura permite separar responsabilidades entre servicios y mantener una comunicación clara entre cada componente del sistema.
 
-    Client -->|"POST /orders<br/>{customer, items:[{sku,qty}]}"| POST_orders
-    Client -->|"GET /orders/{id}"| GET_orders
+Flujo del Sistema
 
-    POST_orders -->|"① HSET order:{id}<br/>status = RECEIVED"| Redis
-    POST_orders -->|"② HTTP POST /internal/orders<br/>+ X-Request-Id<br/>timeout 1 s · 1 retry"| POST_internal
-    POST_orders -.->|"Si writer falla:<br/>HSET status = FAILED"| Redis
+Primero, el cliente.
 
-    POST_internal --> upsert
-    upsert -->|"③ INSERT INTO orders<br/>(si no existe)"| Postgres
-    POST_internal -->|"④ HSET order:{id}<br/>status = PERSISTED"| Redis
-    POST_internal -.->|"Si INSERT falla:<br/>HSET status = FAILED"| Redis
+Cuando se utiliza POST /orders desde:
 
-    GET_orders -->|"⑤ HGETALL order:{id}"| Redis
-```
+http://localhost:8000/docs
 
-### Diagrama de secuencia
+FastAPI del API Gateway recibe un JSON con los campos:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor C as Cliente
-    participant GW as api-gateway :8000
-    participant R as Redis :6379
-    participant WS as writer-service :8001
-    participant PG as Postgres :5432
+customer
 
-    C->>GW: POST /orders {customer, items}
-    GW->>GW: genera order_id (UUID) + X-Request-Id
-    GW->>R: HSET order:{id} status=RECEIVED
-    GW->>WS: POST /internal/orders + X-Request-Id<br/>(timeout 1 s, max 1 retry)
-    WS->>PG: SELECT … WHERE order_id = ? (idempotencia)
-    alt orden no existe
-        WS->>PG: INSERT INTO orders(…)
-        WS->>R: HSET order:{id} status=PERSISTED
-        WS-->>GW: 201 Created
-    else ya existe
-        WS-->>GW: 201 Created (sin duplicar)
-    end
-    GW-->>C: 202 Accepted {order_id, status=RECEIVED}
+items
 
-    Note over C,PG: Consulta posterior
+Este endpoint está definido en:
 
-    C->>GW: GET /orders/{order_id}
-    GW->>R: HGETALL order:{order_id}
-    GW-->>C: 200 {order_id, status, last_update}
-```
+api-gateway/app/main.py
 
-### Resumen de la arquitectura
+FastAPI valida automáticamente el cuerpo usando los modelos definidos en schemas.py mediante Pydantic.
+Pydantic convierte el JSON recibido en un objeto Python tipado llamado OrderCreate.
 
-| Aspecto           | Detalle                                                                                         |
-| ----------------- | ----------------------------------------------------------------------------------------------- |
-| **Comunicación**  | HTTP síncrona (API Gateway → Writer) con timeout 1 s + 1 retry                                  |
-| **Estado rápido** | Redis almacena hash `order:{id}` con `status` y `last_update`                                   |
-| **Persistencia**  | Postgres vía SQLAlchemy async (asyncpg)                                                         |
-| **Idempotencia**  | Writer verifica existencia de `order_id` antes de insertar                                      |
-| **Trazabilidad**  | `X-Request-Id` propagado y logueado en ambos servicios                                          |
-| **Health checks** | `pg_isready` (Postgres) · `redis-cli ping` (Redis)                                              |
-| **Dependencias**  | api-gateway espera redis (healthy) + writer (started); writer espera postgres + redis (healthy) |
-| **Estados**       | `RECEIVED` → `PERSISTED` · `RECEIVED` → `FAILED`                                                |
+Generación del ID de Orden
 
-### Flujo
+Después de validar la petición, el gateway genera un identificador único para la orden utilizando:
 
-1. **POST /orders** → API Gateway genera `order_id`, guarda `status=RECEIVED` en Redis y envía el payload al Writer Service por HTTP.
-2. **Writer Service** escribe en Postgres → actualiza `status=PERSISTED` (o `FAILED`) en Redis.
-3. **GET /orders/{order_id}** → API Gateway lee el estado desde Redis (respuesta rápida).
+uuid.uuid4()
 
-## Estructura del proyecto
+Esto asegura que cada orden tenga un identificador único dentro del sistema.
 
-```
-distributed-orders/
-├── docker-compose.yml
-├── .env
-├── README.md
-│
-├── api-gateway/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── app/
-│       ├── main.py              # POST /orders, GET /orders/{id}
-│       ├── config.py            # variables de entorno
-│       ├── redis_client.py      # conexión a Redis
-│       ├── schemas.py           # modelos Pydantic
-│       └── services/
-│           └── writer_client.py # llamada HTTP al writer (timeout + retry)
-│
-└── writer-service/
-    ├── Dockerfile
-    ├── requirements.txt
-    └── app/
-        ├── main.py              # POST /internal/orders
-        ├── config.py            # variables de entorno
-        ├── redis_client.py      # conexión a Redis
-        ├── db.py                # engine/session SQLAlchemy async
-        ├── models.py            # modelo ORM (Order)
-        ├── schemas.py           # modelo Pydantic (InternalOrder)
-        └── repositories/
-            └── orders_repo.py   # insert idempotente
-```
+En este punto el gateway todavía no escribe en PostgreSQL.
 
-## Servicios
+Primero registra el estado inicial de la orden en Redis.
 
-| Servicio           | Puerto | Descripción                             |
-| ------------------ | ------ | --------------------------------------- |
-| **api-gateway**    | 8000   | API pública – recibe y consulta órdenes |
-| **writer-service** | 8001   | Servicio interno – persiste en Postgres |
-| **postgres**       | 5432   | Base de datos relacional                |
-| **redis**          | 6379   | Caché de estado de órdenes              |
+Uso de Redis
 
-## Endpoints
+Redis se utiliza como almacenamiento rápido de estado.
 
-### API Gateway
+Se crea un hash con la clave:
 
-| Método | Ruta                 | Descripción                                                                    |
-| ------ | -------------------- | ------------------------------------------------------------------------------ |
-| `POST` | `/orders`            | Crea una orden. Body: `{ "customer": "...", "items": [{"sku":"A1","qty":2}] }` |
-| `GET`  | `/orders/{order_id}` | Consulta el estado de una orden                                                |
+order:{order_id}
 
-### Writer Service (interno)
+y campos como:
 
-| Método | Ruta               | Descripción                                     |
-| ------ | ------------------ | ----------------------------------------------- |
-| `POST` | `/internal/orders` | Persiste la orden en Postgres y actualiza Redis |
+status
 
-## Características distribuidas
+last_update
 
-- **Correlación**: header `X-Request-Id` propagado y logueado en ambos servicios.
-- **Timeout + retry**: API Gateway usa timeout de 1 s y 1 reintento al llamar al Writer.
-- **Idempotencia**: el Writer verifica si el `order_id` ya existe antes de insertar (no duplica).
-- **Estados en Redis**: `RECEIVED` → `PERSISTED` | `FAILED`.
+Inicialmente el estado de la orden se guarda como:
 
-## Cómo ejecutar
+RECEIVED
 
-```bash
-# Levantar todos los servicios
-docker compose up --build
+Esto indica que el gateway ya recibió la solicitud correctamente.
 
-# Crear una orden
-curl -X POST http://localhost:8000/orders \
-  -H "Content-Type: application/json" \
-  -d '{"customer": "Berny", "items": [{"sku": "A1", "qty": 2}]}'
+Comunicación con Writer Service
 
-# Consultar estado (usar el order_id devuelto)
-curl http://localhost:8000/orders/<order_id>
-```
+El gateway prepara un payload con los datos de la orden:
 
-## Variables de entorno
+order_id
 
-Definidas en `.env` y compartidas vía `docker-compose.yml`:
+customer
 
-| Variable                 | Valor por defecto                                                      |
-| ------------------------ | ---------------------------------------------------------------------- |
-| `POSTGRES_USER`          | `orders_user`                                                          |
-| `POSTGRES_PASSWORD`      | `orders_pass`                                                          |
-| `POSTGRES_DB`            | `orders_db`                                                            |
-| `DATABASE_URL`           | `postgresql+asyncpg://orders_user:orders_pass@postgres:5432/orders_db` |
-| `REDIS_URL`              | `redis://redis:6379/0`                                                 |
-| `WRITER_SERVICE_URL`     | `http://writer-service:8001`                                           |
-| `WRITER_TIMEOUT_SECONDS` | `1.0`                                                                  |
-| `WRITER_MAX_RETRIES`     | `1`                                                                    |
+items
+
+Este payload se envía al Writer Service mediante una llamada HTTP interna.
+
+Esta comunicación se realiza en el archivo:
+
+writer_client.py
+
+utilizando la librería httpx.
+
+La URL del servicio es:
+
+http://writer-service:8001/internal/orders
+
+Este hostname funciona porque Docker Compose crea una red interna, permitiendo que los contenedores se comuniquen entre sí usando el nombre del servicio.
+
+Persistencia en PostgreSQL
+
+Cuando el Writer Service recibe la petición, entra al endpoint definido en:
+
+writer-service/app/main.py
+
+El JSON recibido se convierte en un objeto del modelo InternalOrder definido en schemas.py.
+
+Después se abre una sesión de base de datos usando SQLAlchemy, configurada en:
+
+db.py
+
+mediante la variable:
+
+DATABASE_URL
+Control de Idempotencia
+
+Antes de insertar la orden en la base de datos, el writer-service verifica si ya existe una orden con el mismo order_id.
+
+Esto se realiza mediante el repositorio:
+
+orders_repo.py
+
+Este paso es importante porque hace que el endpoint sea idempotente.
+Si el gateway envía la misma orden más de una vez, no se duplicará el registro en la base de datos.
+
+Inserción de la Orden
+
+Si la orden no existe, el repositorio construye un objeto Order usando el modelo ORM definido en:
+
+models.py
+
+Luego se inserta en PostgreSQL utilizando:
+
+session.add()
+session.commit()
+
+En este momento la orden queda persistida en la tabla:
+
+orders
+
+dentro de la base de datos:
+
+orders_db
+Actualización de Estado en Redis
+
+Después de insertar la orden, el writer-service vuelve a Redis y actualiza el estado del hash:
+
+order:{order_id}
+
+El campo status cambia a:
+
+PERSISTED
+
+Esto indica que la orden fue guardada correctamente en la base de datos.
+
+Consulta del Estado de la Orden
+
+Cuando el cliente utiliza:
+
+GET /orders/{order_id}
+
+en el gateway, este endpoint no consulta PostgreSQL.
+
+En su lugar, consulta Redis usando:
+
+HGETALL order:{order_id}
+
+Redis responde con el estado actual de la orden, por ejemplo:
+
+PERSISTED
+
+Este diseño hace que la consulta sea muy rápida, ya que Redis es un sistema de almacenamiento en memoria.
+
+Flujo Completo del Sistema
+
+El flujo completo del sistema es el siguiente:
+
+Cliente
+   ↓
+API Gateway
+   ↓
+Redis (estado inicial)
+   ↓
+Writer Service
+   ↓
+PostgreSQL (persistencia)
+   ↓
+Redis (estado actualizado)
+
+Cuando el cliente consulta el estado de la orden, el gateway obtiene la información directamente desde Redis.                                                       |
