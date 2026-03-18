@@ -1,191 +1,182 @@
-Diseño de APP Distribuida de Órdenes
+Diseño de App Distribuida de Órdenes
 
-Nombres:
-Anton Betak Licea
-Roberto Villegas Ojeda
+Integrantes
 
-Número de Cuenta:
-190013
+- Anton Betak Licea
+- Roberto Villegas Ojeda
 
-Arquitectura del Sistema
+Descripción
 
-El sistema está compuesto por cuatro elementos principales:
+Este proyecto maneja ordenes usando varios servicios pequeños.
 
-Cliente (Swagger o curl)
+Lo que ya hacía el proyecto:
 
-API Gateway
+- `api-gateway` recibe la orden.
+- guarda un estado rápido en Redis.
+- manda la orden a `writer-service`.
+- `writer-service` la guarda en PostgreSQL.
 
-Redis
+Lo nuevo que se agregó
 
-Writer Service con PostgreSQL
+Siguiendo el ejemplo visto en clase, despues de guardar la orden se publica un evento en RabbitMQ.
 
-Esta arquitectura permite separar responsabilidades entre servicios y mantener una comunicación clara entre cada componente del sistema.
+Ese evento es:
 
-Flujo del Sistema
+`order.created`
 
-Primero, el cliente.
+Después de eso:
 
-Cuando se utiliza POST /orders desde:
+- `inventory-service` escucha el evento y descuenta stock.
+- `notification-service` escucha el mismo evento y manda una confirmacion simple por log.
+- `analytics-service` escucha el mismo evento y registra una metrica sencilla.
 
-http://localhost:8000/docs
-
-FastAPI del API Gateway recibe un JSON con los campos:
-
-customer
-
-items
-
-Este endpoint está definido en:
-
-api-gateway/app/main.py
-
-FastAPI valida automáticamente el cuerpo usando los modelos definidos en schemas.py mediante Pydantic.
-Pydantic convierte el JSON recibido en un objeto Python tipado llamado OrderCreate.
-
-Generación del ID de Orden
-
-Después de validar la petición, el gateway genera un identificador único para la orden utilizando:
-
-uuid.uuid4()
-
-Esto asegura que cada orden tenga un identificador único dentro del sistema.
-
-En este punto el gateway todavía no escribe en PostgreSQL.
-
-Primero registra el estado inicial de la orden en Redis.
-
-Uso de Redis
-
-Redis se utiliza como almacenamiento rápido de estado.
-
-Se crea un hash con la clave:
-
-order:{order_id}
-
-y campos como:
-
-status
-
-last_update
-
-Inicialmente el estado de la orden se guarda como:
-
-RECEIVED
-
-Esto indica que el gateway ya recibió la solicitud correctamente.
-
-Comunicación con Writer Service
-
-El gateway prepara un payload con los datos de la orden:
-
-order_id
-
-customer
-
-items
-
-Este payload se envía al Writer Service mediante una llamada HTTP interna.
-
-Esta comunicación se realiza en el archivo:
-
-writer_client.py
-
-utilizando la librería httpx.
-
-La URL del servicio es:
-
-http://writer-service:8001/internal/orders
-
-Este hostname funciona porque Docker Compose crea una red interna, permitiendo que los contenedores se comuniquen entre sí usando el nombre del servicio.
-
-Persistencia en PostgreSQL
-
-Cuando el Writer Service recibe la petición, entra al endpoint definido en:
-
-writer-service/app/main.py
-
-El JSON recibido se convierte en un objeto del modelo InternalOrder definido en schemas.py.
-
-Después se abre una sesión de base de datos usando SQLAlchemy, configurada en:
-
-db.py
-
-mediante la variable:
-
-DATABASE_URL
-Control de Idempotencia
-
-Antes de insertar la orden en la base de datos, el writer-service verifica si ya existe una orden con el mismo order_id.
-
-Esto se realiza mediante el repositorio:
-
-orders_repo.py
-
-Este paso es importante porque hace que el endpoint sea idempotente.
-Si el gateway envía la misma orden más de una vez, no se duplicará el registro en la base de datos.
-
-Inserción de la Orden
-
-Si la orden no existe, el repositorio construye un objeto Order usando el modelo ORM definido en:
-
-models.py
-
-Luego se inserta en PostgreSQL utilizando:
-
-session.add()
-session.commit()
-
-En este momento la orden queda persistida en la tabla:
-
-orders
-
-dentro de la base de datos:
-
-orders_db
-Actualización de Estado en Redis
-
-Después de insertar la orden, el writer-service vuelve a Redis y actualiza el estado del hash:
-
-order:{order_id}
-
-El campo status cambia a:
-
-PERSISTED
-
-Esto indica que la orden fue guardada correctamente en la base de datos.
-
-Consulta del Estado de la Orden
-
-Cuando el cliente utiliza:
-
-GET /orders/{order_id}
-
-en el gateway, este endpoint no consulta PostgreSQL.
-
-En su lugar, consulta Redis usando:
-
-HGETALL order:{order_id}
-
-Redis responde con el estado actual de la orden, por ejemplo:
-
-PERSISTED
-
-Este diseño hace que la consulta sea muy rápida, ya que Redis es un sistema de almacenamiento en memoria.
-
-Flujo Completo del Sistema
-
-El flujo completo del sistema es el siguiente:
+Arquitectura
 
 Cliente
-   ↓
+↓
 API Gateway
-   ↓
-Redis (estado inicial)
-   ↓
+↓
+Redis
+↓
 Writer Service
-   ↓
-PostgreSQL (persistencia)
-   ↓
-Redis (estado actualizado)
+↓
+PostgreSQL
+↓
+RabbitMQ
+↓
+Inventory Service
+↓
+Notification Service
 
-Cuando el cliente consulta el estado de la orden, el gateway obtiene la información directamente desde Redis.                                                       |
+Servicios
+
+`api-gateway`
+
+- expone `POST /orders`
+- expone `GET /orders/{order_id}`
+
+`writer-service`
+
+- recibe la orden desde el gateway
+- la guarda en PostgreSQL
+- publica `order.created` en RabbitMQ
+
+`inventory-service`
+
+- tiene una tabla sencilla de inventario
+- escucha eventos `order.created`
+- resta stock por cada item de la orden
+- expone endpoints para consultar y cargar stock
+
+`notification-service`
+
+- escucha eventos `order.created`
+- imprime en consola una confirmacion
+
+`analytics-service`
+
+- escucha eventos `order.created`
+- guarda metricas simples en Redis
+- cuenta cuantas ordenes se han creado
+- cuenta cuantos productos se pidieron en total
+
+RabbitMQ
+
+Se usa un exchange tipo `fanout` llamado:
+
+`orders`
+
+Asi un mismo evento le llega tanto a inventario como a notificaciones.
+Tambien le llega a analytics.
+
+Base de datos
+
+Se usan dos tablas dentro de PostgreSQL:
+
+- `orders`
+- `inventory_items`
+
+Levantar el proyecto
+
+```bash
+docker compose up --build
+```
+
+Puertos
+
+- gateway: `8000`
+- writer-service: `8001`
+- inventory-service: `8002`
+- postgres: `5432`
+- redis: `6379`
+- rabbitmq: `5672`
+
+Probar inventario
+
+Primero cargar stock:
+
+```bash
+curl -X POST http://localhost:8002/inventory/seed \
+  -H "Content-Type: application/json" \
+  -d '{"sku":"A1","stock":10}'
+```
+
+```bash
+curl -X POST http://localhost:8002/inventory/seed \
+  -H "Content-Type: application/json" \
+  -d '{"sku":"B3","stock":5}'
+```
+
+Luego crear una orden:
+
+```bash
+curl -X POST http://localhost:8000/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customer": "Monica",
+    "items": [
+      {"sku": "A1", "qty": 2},
+      {"sku": "B3", "qty": 1}
+    ]
+  }'
+```
+
+Despues revisar el inventario:
+
+```bash
+curl http://localhost:8002/inventory/A1
+```
+
+```bash
+curl http://localhost:8002/inventory/B3
+```
+
+Ver notificacion
+
+```bash
+docker compose logs notification-service
+```
+
+Ver metrica
+
+```bash
+docker compose logs analytics-service
+```
+
+Ejemplo del evento
+
+```json
+{
+  "event": "order.created",
+  "order_id": "ORD-001",
+  "customer": "Monica",
+  "items": [
+    { "sku": "A1", "qty": 2 },
+    { "sku": "B3", "qty": 1 }
+  ]
+}
+```
+
+Comentario final
+
+La idea principal de esta version es mostrar como una orden puede generar un evento y como otros servicios reaccionan sin que el gateway les tenga que hablar directo.

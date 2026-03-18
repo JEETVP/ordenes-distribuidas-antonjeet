@@ -3,15 +3,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-orders_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orders_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-orders_db}
     ports:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-orders_user} -d ${POSTGRES_DB:-orders_db}"]
       interval: 5s
       retries: 5
 
@@ -24,14 +24,66 @@ services:
       interval: 5s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    ports:
+      - "5672:5672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      retries: 10
+
   writer-service:
     build: ./writer-service
     ports:
       - "8001:8001"
-    env_file:
-      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://orders_user:orders_pass@postgres:5432/orders_db}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
+      ORDERS_EXCHANGE: ${ORDERS_EXCHANGE:-orders}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  inventory-service:
+    build: ./inventory-service
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: ${INVENTORY_DATABASE_URL:-postgresql://orders_user:orders_pass@postgres:5432/orders_db}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
+      ORDERS_EXCHANGE: ${ORDERS_EXCHANGE:-orders}
+      INVENTORY_QUEUE: ${INVENTORY_QUEUE:-inventory.order.created}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  notification-service:
+    build: ./notification-service
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
+      ORDERS_EXCHANGE: ${ORDERS_EXCHANGE:-orders}
+      NOTIFICATION_QUEUE: ${NOTIFICATION_QUEUE:-notification.order.created}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  analytics-service:
+    build: ./analytics-service
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
+      ORDERS_EXCHANGE: ${ORDERS_EXCHANGE:-orders}
+      ANALYTICS_QUEUE: ${ANALYTICS_QUEUE:-analytics.order.created}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      rabbitmq:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -40,8 +92,9 @@ services:
     build: ./api-gateway
     ports:
       - "8000:8000"
-    env_file:
-      - .env
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      WRITER_SERVICE_URL: ${WRITER_SERVICE_URL:-http://writer-service:8001}
     depends_on:
       redis:
         condition: service_healthy
