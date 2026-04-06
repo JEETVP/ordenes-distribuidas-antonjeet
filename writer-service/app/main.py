@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from datetime import datetime
-
+import uuid
 from db import SessionLocal, engine
 from models import Base
 from schemas import InternalOrder
@@ -10,23 +10,22 @@ from services.events import publicar_orden_creada
 
 app = FastAPI(title="Writer Service")
 
-
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
-
 
 @app.get("/")
 def root():
     return {"service": "writer-service"}
 
-
 @app.post("/internal/orders")
-def create_order(order: InternalOrder): #validacion con internal order de schemas.py
+def create_order(order: InternalOrder):
 
-    db = SessionLocal() #sesion para la transaccion
+    db = SessionLocal()
+    repo = OrdersRepository(db)
 
-    repo = OrdersRepository(db) #ejecuta las consultas para ver si existe la orden y hacer la insercion
+    if not order.order_id:
+        order.order_id = str(uuid.uuid4())
 
     exists = repo.exists(order.order_id)
 
@@ -42,11 +41,11 @@ def create_order(order: InternalOrder): #validacion con internal order de schema
             }
         )
 
-    redis_client.hset( #modifica el estado en edis
+    redis_client.hset(
         f"order:{order.order_id}",
         mapping={"status": "PERSISTED"}
     )
 
-    db.close() #cierra la conexion y devuelve el cambio de estado como respuesta
+    db.close()
 
     return {"order_id": order.order_id, "status": "PERSISTED"}

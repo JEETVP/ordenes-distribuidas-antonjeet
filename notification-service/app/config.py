@@ -14,3 +14,8 @@ NOTIFICATION_QUEUE = os.getenv(
     "NOTIFICATION_QUEUE",
     "notification.order.created"
 )
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://notifications_user:notifications_pass@postgres-notifications:5432/notifications_db"
+)

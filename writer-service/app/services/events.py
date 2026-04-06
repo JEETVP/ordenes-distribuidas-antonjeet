@@ -11,11 +11,10 @@ def publicar_orden_creada(mensaje: dict) -> None:
 
     try:
         canal = conexion.channel()
-        # fanout hace que el mismo evento se reparta a varios servicios
-        canal.exchange_declare(exchange=ORDERS_EXCHANGE, exchange_type="fanout", durable=True)
+        canal.exchange_declare(exchange=ORDERS_EXCHANGE, exchange_type="topic", durable=True)
         canal.basic_publish(
             exchange=ORDERS_EXCHANGE,
-            routing_key="",
+            routing_key="order.created",  # necesario para topic
             body=json.dumps(mensaje),
             properties=pika.BasicProperties(
                 delivery_mode=2,
