@@ -1,5 +1,4 @@
 services:
-
   postgres:
     image: postgres:16-alpine
     environment:
@@ -114,6 +113,8 @@ services:
     environment:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       WRITER_SERVICE_URL: ${WRITER_SERVICE_URL:-http://writer-service:8001}
+      WRITER_TIMEOUT_SECONDS: ${WRITER_TIMEOUT_SECONDS:-1.0}
+      WRITER_MAX_RETRIES: ${WRITER_MAX_RETRIES:-1}
     depends_on:
       redis:
         condition: service_healthy

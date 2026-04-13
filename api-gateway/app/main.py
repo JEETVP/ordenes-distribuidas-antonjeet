@@ -46,6 +46,7 @@ async def create_order(order: OrderCreate, request: Request): #tiene que recibir
                 "last_update": datetime.utcnow().isoformat()
             }
         )
+        raise HTTPException(status_code=502, detail="Writer service unavailable")
 
     return { #caso de exito e
         "order_id": order_id,
