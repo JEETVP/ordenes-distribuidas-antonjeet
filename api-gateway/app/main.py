@@ -2,19 +2,11 @@ from fastapi import FastAPI, HTTPException, Request
 import uuid
 from datetime import datetime
 
-from db import engine
-from models import Base
 from redis_client import redis_client
 from schemas import OrderCreate
 from services.writer_client import send_order_to_writer
 
 app = FastAPI(title="API Gateway")
-
-
-@app.on_event("startup")
-def startup():
-    if engine is not None:
-        Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")
