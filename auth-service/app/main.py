@@ -8,7 +8,6 @@ from security import (
     create_access_token,
     get_current_claims,
     get_password_hash,
-    validate_password_length,
     verify_password,
 )
 
@@ -36,7 +35,6 @@ def health():
 @app.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(payload: UserRegister, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
-    validate_password_length(payload.password)
     existing_user = db.query(User).filter(User.email == email).first()
 
     if existing_user is not None:
