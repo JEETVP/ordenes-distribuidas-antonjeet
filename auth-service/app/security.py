@@ -9,13 +9,25 @@ from config import JWT_ALGORITHM, JWT_EXPIRE_MINUTES, JWT_SECRET
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
+MAX_PASSWORD_BYTES = 72
+
+
+def validate_password_length(password: str) -> None:
+    if len(password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be 72 bytes or fewer",
+        )
 
 
 def get_password_hash(password: str) -> str:
+    validate_password_length(password)
     return pwd_context.hash(password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
+    if len(password.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        return False
     return pwd_context.verify(password, password_hash)
 
 
