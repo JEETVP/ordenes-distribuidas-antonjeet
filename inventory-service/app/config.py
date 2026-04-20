@@ -19,3 +19,6 @@ INVENTORY_QUEUE = os.getenv(
     "INVENTORY_QUEUE",
     "inventory.order.created"
 )
+
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")

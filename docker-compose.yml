@@ -57,6 +57,8 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
       ORDERS_EXCHANGE: ${ORDERS_EXCHANGE:-orders}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,6 +76,8 @@ services:
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
       ORDERS_EXCHANGE: ${ORDERS_EXCHANGE:-orders}
       INVENTORY_QUEUE: ${INVENTORY_QUEUE:-inventory.order.created}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
     depends_on:
       postgres:
         condition: service_healthy
@@ -106,18 +110,36 @@ services:
       redis:
         condition: service_healthy
 
+  auth-service:
+    build: ./auth-service
+    ports:
+      - "8003:8003"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://orders_user:orders_pass@postgres:5432/orders_db}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api-gateway:
     build: ./api-gateway
     ports:
       - "8000:8000"
     environment:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth-service:8003}
       WRITER_SERVICE_URL: ${WRITER_SERVICE_URL:-http://writer-service:8001}
       WRITER_TIMEOUT_SECONDS: ${WRITER_TIMEOUT_SECONDS:-1.0}
       WRITER_MAX_RETRIES: ${WRITER_MAX_RETRIES:-1}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
     depends_on:
       redis:
         condition: service_healthy
+      auth-service:
+        condition: service_started
       writer-service:
         condition: service_started
 

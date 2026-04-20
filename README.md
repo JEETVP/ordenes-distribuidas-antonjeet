@@ -1,100 +1,57 @@
-Diseño de App Distribuida de Órdenes
+Sistema distribuido de ordenes con autenticacion JWT
 
 Integrantes
 
 - Anton Betak Licea
 - Roberto Villegas Ojeda
 
-Descripción
+Descripcion
 
-Este proyecto maneja ordenes usando varios servicios pequeños.
+El repositorio implementa una arquitectura de microservicios con FastAPI, Docker Compose, RabbitMQ, PostgreSQL y Redis.
 
-Lo que ya hacía el proyecto:
+Servicios detectados
 
-- `api-gateway` recibe la orden.
-- guarda un estado rápido en Redis.
-- manda la orden a `writer-service`.
-- `writer-service` la guarda en PostgreSQL.
+- `api-gateway`: punto de entrada HTTP del sistema. Expone registro, login, validacion de token y operaciones de ordenes.
+- `auth-service`: nuevo microservicio de autenticacion. Registra usuarios, valida credenciales y emite JWT.
+- `writer-service`: persiste ordenes en PostgreSQL y publica `order.created` en RabbitMQ.
+- `inventory-service`: descuenta inventario al consumir eventos y expone endpoints HTTP para consulta/carga.
+- `notification-service`: consume eventos y guarda notificaciones en su propia base PostgreSQL.
+- `analytics-service`: consume eventos y guarda metricas simples en Redis.
 
-Lo nuevo que se agregó
+Infraestructura reutilizada
 
-Siguiendo el ejemplo visto en clase, despues de guardar la orden se publica un evento en RabbitMQ.
+- PostgreSQL principal: `postgres`, reutilizado para `orders` y `users`.
+- PostgreSQL de notificaciones: `postgres-notifications`, sin cambios funcionales.
+- Redis: reutilizado para estados rapidos del gateway y metricas de analytics.
+- RabbitMQ: se mantiene el exchange `orders` y las colas actuales.
 
-Ese evento es:
+Autenticacion
 
-`order.created`
+- El `auth-service` usa la tabla `users` en el PostgreSQL principal.
+- Las passwords se almacenan hasheadas con `passlib` y `bcrypt`.
+- El login emite un JWT firmado con `JWT_SECRET`.
+- El token incluye `sub`, `email`, `role` y `exp`.
+- Las rutas de negocio en `api-gateway`, `writer-service` e `inventory-service` ahora requieren `Authorization: Bearer <token>`.
+- Las rutas publicas quedaron limitadas a:
+  - `GET /health`
+  - `POST /auth/register`
+  - `POST /auth/login`
 
-Después de eso:
+Rutas principales
 
-- `inventory-service` escucha el evento y descuenta stock.
-- `notification-service` escucha el mismo evento y manda una confirmacion simple por log.
-- `analytics-service` escucha el mismo evento y registra una metrica sencilla.
+- Gateway: `http://localhost:8000`
+- Auth service directo: `http://localhost:8003`
+- Writer service: `http://localhost:8001`
+- Inventory service: `http://localhost:8002`
 
-Arquitectura
+Variables de entorno nuevas
 
-Cliente
-↓
-API Gateway
-↓
-Redis
-↓
-Writer Service
-↓
-PostgreSQL
-↓
-RabbitMQ
-↓
-Inventory Service
-↓
-Notification Service
+- `JWT_SECRET`
+- `JWT_ALGORITHM`
+- `JWT_EXPIRE_MINUTES`
+- `AUTH_SERVICE_URL`
 
-Servicios
-
-`api-gateway`
-
-- expone `POST /orders`
-- expone `GET /orders/{order_id}`
-
-`writer-service`
-
-- recibe la orden desde el gateway
-- la guarda en PostgreSQL
-- publica `order.created` en RabbitMQ
-
-`inventory-service`
-
-- tiene una tabla sencilla de inventario
-- escucha eventos `order.created`
-- resta stock por cada item de la orden
-- expone endpoints para consultar y cargar stock
-
-`notification-service`
-
-- escucha eventos `order.created`
-- imprime en consola una confirmacion
-
-`analytics-service`
-
-- escucha eventos `order.created`
-- guarda metricas simples en Redis
-- cuenta cuantas ordenes se han creado
-- cuenta cuantos productos se pidieron en total
-
-RabbitMQ
-
-Se usa un exchange tipo `fanout` llamado:
-
-`orders`
-
-Asi un mismo evento le llega tanto a inventario como a notificaciones.
-Tambien le llega a analytics.
-
-Base de datos
-
-Se usan dos tablas dentro de PostgreSQL:
-
-- `orders`
-- `inventory_items`
+Las variables ya existentes (`DATABASE_URL`, `REDIS_URL`, `RABBITMQ_URL`, `WRITER_SERVICE_URL`) se siguen reutilizando.
 
 Levantar el proyecto
 
@@ -102,36 +59,45 @@ Levantar el proyecto
 docker compose up --build
 ```
 
-Puertos
-
-- gateway: `8000`
-- writer-service: `8001`
-- inventory-service: `8002`
-- postgres: `5432`
-- redis: `6379`
-- rabbitmq: `5672`
-
-Probar inventario
-
-Primero cargar stock:
+Health checks utiles
 
 ```bash
-curl -X POST http://localhost:8002/inventory/seed \
-  -H "Content-Type: application/json" \
-  -d '{"sku":"A1","stock":10}'
+curl http://localhost:8000/health
+curl http://localhost:8003/health
+curl http://localhost:8002/health
 ```
+
+Flujo de prueba
+
+1. Registrar usuario
 
 ```bash
-curl -X POST http://localhost:8002/inventory/seed \
+curl -X POST http://localhost:8000/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"sku":"B3","stock":5}'
+  -d '{"email":"test@example.com","password":"123456"}'
 ```
 
-Luego crear una orden:
+2. Login
+
+```bash
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"123456"}'
+```
+
+3. Consultar datos del token
+
+```bash
+curl http://localhost:8000/auth/me \
+  -H "Authorization: Bearer TU_TOKEN"
+```
+
+4. Crear una orden protegida
 
 ```bash
 curl -X POST http://localhost:8000/orders \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TU_TOKEN" \
   -d '{
     "customer": "Monica",
     "items": [
@@ -141,42 +107,56 @@ curl -X POST http://localhost:8000/orders \
   }'
 ```
 
-Despues revisar el inventario:
+5. Consultar estado de la orden
 
 ```bash
-curl http://localhost:8002/inventory/A1
+curl http://localhost:8000/orders/ORDER_ID \
+  -H "Authorization: Bearer TU_TOKEN"
 ```
+
+6. Cargar inventario protegido
 
 ```bash
-curl http://localhost:8002/inventory/B3
+curl -X POST http://localhost:8002/inventory/seed \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer TU_TOKEN" \
+  -d '{"sku":"A1","stock":10}'
 ```
 
-Ver notificacion
+7. Consultar inventario protegido
 
 ```bash
-docker compose logs notification-service
+curl http://localhost:8002/inventory/A1 \
+  -H "Authorization: Bearer TU_TOKEN"
 ```
 
-Ver metrica
+Casos esperados de seguridad
+
+- Sin token:
 
 ```bash
-docker compose logs analytics-service
+curl http://localhost:8000/orders/ORDER_ID
 ```
 
-Ejemplo del evento
+Respuesta esperada: `401 Unauthorized`
 
-```json
-{
-  "event": "order.created",
-  "order_id": "ORD-001",
-  "customer": "Monica",
-  "items": [
-    { "sku": "A1", "qty": 2 },
-    { "sku": "B3", "qty": 1 }
-  ]
-}
+- Token invalido:
+
+```bash
+curl http://localhost:8000/orders/ORDER_ID \
+  -H "Authorization: Bearer token-invalido"
 ```
 
-Comentario final
+Respuesta esperada: `401 Unauthorized`
 
-La idea principal de esta version es mostrar como una orden puede generar un evento y como otros servicios reaccionan sin que el gateway les tenga que hablar directo.
+Mensajeria
+
+- `writer-service` sigue publicando `order.created`.
+- `inventory-service`, `notification-service` y `analytics-service` siguen consumiendo el mismo flujo.
+- La autenticacion HTTP no modifica exchanges, colas ni routing keys.
+
+Notas tecnicas
+
+- El gateway reenvia el header `Authorization` al `writer-service`.
+- La validacion JWT tambien se hace localmente dentro de `writer-service` e `inventory-service` para evitar bypass si se les llama directamente dentro de la red Docker.
+- No se agrego un nuevo contenedor de Postgres ni de Redis para auth; se reutiliza la infraestructura existente.

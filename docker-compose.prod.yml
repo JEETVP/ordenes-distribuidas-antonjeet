@@ -6,6 +6,13 @@ services:
       LOG_LEVEL: WARNING
     restart: always
 
+  auth-service:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
   writer-service:
     restart: always
     deploy:

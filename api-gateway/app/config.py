@@ -1,6 +1,9 @@
 import os
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8003")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
 WRITER_SERVICE_URL = os.getenv(
     "WRITER_SERVICE_URL",

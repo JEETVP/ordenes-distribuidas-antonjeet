@@ -1,64 +1,97 @@
-from fastapi import FastAPI, HTTPException, Request
 import uuid
 from datetime import datetime
 
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
+
+from auth import get_current_claims
 from redis_client import redis_client
 from schemas import OrderCreate
+from services.auth_client import proxy_auth_request
 from services.writer_client import send_order_to_writer
 
 app = FastAPI(title="API Gateway")
 
 
-@app.get("/")
-def root():
-    return {"service": "api-gateway"}
+@app.get("/health")
+def health():
+    return {"service": "api-gateway", "status": "ok"}
+
+
+@app.post("/auth/register", status_code=status.HTTP_201_CREATED)
+async def register(request: Request):
+    response_status, payload = await proxy_auth_request("/auth/register", request)
+    return JSONResponse(content=payload, status_code=response_status)
+
+
+@app.post("/auth/login")
+async def login(request: Request):
+    response_status, payload = await proxy_auth_request("/auth/login", request)
+    return JSONResponse(content=payload, status_code=response_status)
+
+
+@app.get("/auth/me")
+async def me(request: Request):
+    response_status, payload = await proxy_auth_request("/auth/me", request)
+    return JSONResponse(content=payload, status_code=response_status)
+
+
+@app.get("/auth/verify")
+async def verify(request: Request):
+    response_status, payload = await proxy_auth_request("/auth/verify", request)
+    return JSONResponse(content=payload, status_code=response_status)
 
 
 @app.post("/orders")
-async def create_order(order: OrderCreate, request: Request): #tiene que recibir el esquema de order create
-
-    order_id = str(uuid.uuid4()) #identificador aleatorio como string
+async def create_order(
+    order: OrderCreate,
+    request: Request,
+    claims: dict = Depends(get_current_claims),
+):
+    order_id = str(uuid.uuid4())
     request_id = request.headers.get("X-Request-Id", str(uuid.uuid4()))
 
-    redis_key = f"order:{order_id}" #asigna una clava para que podamos consultar en redis
-
+    redis_key = f"order:{order_id}"
     redis_client.hset(
         redis_key,
-        mapping={ #guarda en redis con un estado inicial de recibido, pasa a persisted cuando lo recive el writer-service
+        mapping={
             "status": "RECEIVED",
-            "last_update": datetime.utcnow().isoformat()
-        }
+            "last_update": datetime.utcnow().isoformat(),
+        },
     )
 
-    payload = { # define lo que tiene que enviar al writer service
+    payload = {
         "order_id": order_id,
         "customer": order.customer,
-        "items": [item.dict() for item in order.items]
+        "items": [item.model_dump() for item in order.items],
     }
 
-    success = await send_order_to_writer(payload, request_id) #espera para mandar la orden al writer-service
+    success = await send_order_to_writer(
+        payload,
+        request_id,
+        request.headers.get("Authorization"),
+    )
 
     if not success:
         redis_client.hset(
             redis_key,
             mapping={
                 "status": "FAILED",
-                "last_update": datetime.utcnow().isoformat()
-            }
+                "last_update": datetime.utcnow().isoformat(),
+            },
         )
         raise HTTPException(status_code=502, detail="Writer service unavailable")
 
-    return { #caso de exito e
+    return {
         "order_id": order_id,
-        "status": "RECEIVED"
+        "status": "RECEIVED",
+        "requested_by": claims["email"],
     }
 
 
 @app.get("/orders/{order_id}")
-def get_order(order_id: str):
-
-    redis_key = f"order:{order_id}" #busca con la clave de redis
-
+def get_order(order_id: str, claims: dict = Depends(get_current_claims)):
+    redis_key = f"order:{order_id}"
     data = redis_client.hgetall(redis_key)
 
     if not data:
@@ -67,5 +100,6 @@ def get_order(order_id: str):
     return {
         "order_id": order_id,
         "status": data.get("status"),
-        "last_update": data.get("last_update")
+        "last_update": data.get("last_update"),
+        "requested_by": claims["email"],
     }

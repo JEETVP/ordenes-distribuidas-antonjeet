@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 
+from auth import get_current_claims
 from consumer import iniciar_hilo_consumidor
 from db import SessionLocal, engine
 from models import Base
@@ -15,13 +16,13 @@ def startup():
     iniciar_hilo_consumidor()
 
 
-@app.get("/")
-def root():
-    return {"service": "inventory-service"}
+@app.get("/health")
+def health():
+    return {"service": "inventory-service", "status": "ok"}
 
 
 @app.post("/inventory/seed")
-def seed_inventory(payload: InventorySeed):
+def seed_inventory(payload: InventorySeed, claims: dict = Depends(get_current_claims)):
     db = SessionLocal()
 
     try:
@@ -29,13 +30,17 @@ def seed_inventory(payload: InventorySeed):
         item = repo.upsert_stock(payload.sku, payload.stock)
         db.commit()
         db.refresh(item)
-        return {"sku": item.sku, "stock": item.stock}
+        return {
+            "sku": item.sku,
+            "stock": item.stock,
+            "updated_by": claims["email"],
+        }
     finally:
         db.close()
 
 
 @app.get("/inventory/{sku}")
-def get_inventory(sku: str):
+def get_inventory(sku: str, claims: dict = Depends(get_current_claims)):
     db = SessionLocal()
 
     try:
@@ -45,6 +50,10 @@ def get_inventory(sku: str):
         if item is None:
             raise HTTPException(status_code=404, detail="SKU not found")
 
-        return {"sku": item.sku, "stock": item.stock}
+        return {
+            "sku": item.sku,
+            "stock": item.stock,
+            "requested_by": claims["email"],
+        }
     finally:
         db.close()

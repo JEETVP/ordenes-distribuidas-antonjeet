@@ -8,7 +8,7 @@ class Item(BaseModel):
 
 
 class InternalOrder(BaseModel):
-    order_id: str
+    order_id: str | None = None
     customer: str
     items: List[Item]
 

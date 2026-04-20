@@ -11,5 +11,8 @@ services:
   inventory-service:
     restart: unless-stopped
 
+  auth-service:
+    restart: unless-stopped
+
   notification-service:
     restart: unless-stopped
