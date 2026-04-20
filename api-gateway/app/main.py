@@ -42,6 +42,12 @@ async def verify(request: Request):
     return JSONResponse(content=payload, status_code=response_status)
 
 
+@app.post("/auth/logout")
+async def logout(request: Request):
+    response_status, payload = await proxy_auth_request("/auth/logout", request)
+    return JSONResponse(content=payload, status_code=response_status)
+
+
 @app.post("/orders")
 async def create_order(
     order: OrderCreate,

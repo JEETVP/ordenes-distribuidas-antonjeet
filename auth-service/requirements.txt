@@ -6,3 +6,4 @@ pydantic>=2,<3
 pydantic-settings>=2,<3
 PyJWT>=2.8,<3
 passlib>=1.7,<2
+redis[hiredis]>=5,<6

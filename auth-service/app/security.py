@@ -1,14 +1,17 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
 
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
+import redis
 
-from config import JWT_ALGORITHM, JWT_EXPIRE_MINUTES, JWT_SECRET
+from config import JWT_ALGORITHM, JWT_EXPIRE_MINUTES, JWT_SECRET, REDIS_URL
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
+redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
 
 def get_password_hash(password: str) -> str:
@@ -68,6 +71,21 @@ def decode_token(token: str) -> dict:
     return payload
 
 
+def _token_blacklist_key(token: str) -> str:
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return f"auth:blacklist:{token_hash}"
+
+
+def is_token_revoked(token: str) -> bool:
+    return bool(redis_client.exists(_token_blacklist_key(token)))
+
+
+def revoke_token(token: str, exp: int) -> None:
+    expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+    ttl = max(int((expires_at - datetime.now(timezone.utc)).total_seconds()), 1)
+    redis_client.set(_token_blacklist_key(token), "1", ex=ttl)
+
+
 def get_current_claims(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict:
@@ -77,4 +95,22 @@ def get_current_claims(
             detail="Missing bearer token",
         )
 
+    if is_token_revoked(credentials.credentials):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token revoked",
+        )
+
     return decode_token(credentials.credentials)
+
+
+def get_current_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> str:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token",
+        )
+
+    return credentials.credentials

@@ -28,8 +28,9 @@ Infraestructura reutilizada
 Autenticacion
 
 - El `auth-service` usa la tabla `users` en el PostgreSQL principal.
-- Las passwords se almacenan hasheadas con `passlib` y `bcrypt`.
+- Las passwords se almacenan hasheadas con `passlib` y `pbkdf2_sha256`.
 - El login emite un JWT firmado con `JWT_SECRET`.
+- `POST /auth/logout` revoca el token actual en Redis hasta su expiracion.
 - El token incluye `sub`, `email`, `role` y `exp`.
 - Las rutas de negocio en `api-gateway`, `writer-service` e `inventory-service` ahora requieren `Authorization: Bearer <token>`.
 - Las rutas publicas quedaron limitadas a:
@@ -85,14 +86,21 @@ curl -X POST http://localhost:8000/auth/login \
   -d '{"email":"test@example.com","password":"123456"}'
 ```
 
-3. Consultar datos del token
+3. Logout
+
+```bash
+curl -X POST http://localhost:8000/auth/logout \
+  -H "Authorization: Bearer TU_TOKEN"
+```
+
+4. Consultar datos del token
 
 ```bash
 curl http://localhost:8000/auth/me \
   -H "Authorization: Bearer TU_TOKEN"
 ```
 
-4. Crear una orden protegida
+5. Crear una orden protegida
 
 ```bash
 curl -X POST http://localhost:8000/orders \
@@ -107,14 +115,14 @@ curl -X POST http://localhost:8000/orders \
   }'
 ```
 
-5. Consultar estado de la orden
+6. Consultar estado de la orden
 
 ```bash
 curl http://localhost:8000/orders/ORDER_ID \
   -H "Authorization: Bearer TU_TOKEN"
 ```
 
-6. Cargar inventario protegido
+7. Cargar inventario protegido
 
 ```bash
 curl -X POST http://localhost:8002/inventory/seed \
@@ -123,7 +131,7 @@ curl -X POST http://localhost:8002/inventory/seed \
   -d '{"sku":"A1","stock":10}'
 ```
 
-7. Consultar inventario protegido
+8. Consultar inventario protegido
 
 ```bash
 curl http://localhost:8002/inventory/A1 \

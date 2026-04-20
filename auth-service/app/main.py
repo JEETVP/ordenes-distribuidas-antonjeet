@@ -7,7 +7,9 @@ from schemas import TokenResponse, UserLogin, UserRegister, UserResponse
 from security import (
     create_access_token,
     get_current_claims,
+    get_current_token,
     get_password_hash,
+    revoke_token,
     verify_password,
 )
 
@@ -95,3 +97,9 @@ def me(claims: dict = Depends(get_current_claims), db: Session = Depends(get_db)
 @app.get("/auth/verify")
 def verify_token(claims: dict = Depends(get_current_claims)):
     return claims
+
+
+@app.post("/auth/logout")
+def logout(token: str = Depends(get_current_token), claims: dict = Depends(get_current_claims)):
+    revoke_token(token, claims["exp"])
+    return {"message": "Logged out successfully"}

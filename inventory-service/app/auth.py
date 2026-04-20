@@ -1,10 +1,14 @@
+import hashlib
+
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import redis
 
-from config import JWT_ALGORITHM, JWT_SECRET
+from config import JWT_ALGORITHM, JWT_SECRET, REDIS_URL
 
 bearer_scheme = HTTPBearer(auto_error=False)
+redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
 
 def decode_token(token: str) -> dict:
@@ -37,6 +41,11 @@ def decode_token(token: str) -> dict:
     return payload
 
 
+def _token_blacklist_key(token: str) -> str:
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return f"auth:blacklist:{token_hash}"
+
+
 def get_current_claims(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict:
@@ -44,6 +53,12 @@ def get_current_claims(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing bearer token",
+        )
+
+    if redis_client.exists(_token_blacklist_key(credentials.credentials)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token revoked",
         )
 
     return decode_token(credentials.credentials)
