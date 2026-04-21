@@ -7,7 +7,6 @@ const methodOverride = require('method-override');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuración
 app.set('view engine', 'ejs');
 app.set('views', './views');
 app.use(express.static('public'));
@@ -16,19 +15,15 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(methodOverride('_method'));
 
-// Configuración de sesión
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your-session-secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false } // Cambiar a true en producción con HTTPS
+  cookie: { secure: false }
 }));
 
-// URLs de servicios
 const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8000';
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:8003';
 
-// Middleware para verificar autenticación
 const requireAuth = (req, res, next) => {
   if (!req.session.token) {
     return res.redirect('/login');
@@ -36,7 +31,6 @@ const requireAuth = (req, res, next) => {
   next();
 };
 
-// Rutas
 app.get('/', (req, res) => {
   if (req.session.token) {
     return res.redirect('/dashboard');
@@ -44,7 +38,6 @@ app.get('/', (req, res) => {
   res.redirect('/login');
 });
 
-// Login
 app.get('/login', (req, res) => {
   res.render('login', { error: null });
 });
@@ -63,12 +56,11 @@ app.post('/login', async (req, res) => {
 
     res.redirect('/dashboard');
   } catch (error) {
-    const errorMessage = error.response?.data?.detail || 'Error al iniciar sesión';
+    const errorMessage = error.response?.data?.detail || 'Error al iniciar sesion';
     res.render('login', { error: errorMessage });
   }
 });
 
-// Registro
 app.get('/register', (req, res) => {
   res.render('register', { error: null });
 });
@@ -89,43 +81,51 @@ app.post('/register', async (req, res) => {
   }
 });
 
-// Dashboard
 app.get('/dashboard', requireAuth, async (req, res) => {
+  let orders = [];
+  let inventory = [];
+  let error = req.query.error || null;
+
   try {
-    // Obtener órdenes
     const ordersResponse = await axios.get(`${API_GATEWAY_URL}/orders`, {
       headers: { Authorization: `Bearer ${req.session.token}` }
     });
+    orders = ordersResponse.data || [];
+  } catch (ordersError) {
+    console.error('Error loading orders:', ordersError.message);
+    error = error || 'Error al cargar las ordenes';
+  }
 
-    // Obtener inventario
+  try {
     const inventoryResponse = await axios.get(`${API_GATEWAY_URL}/inventory`, {
       headers: { Authorization: `Bearer ${req.session.token}` }
     });
-
-    res.render('dashboard', {
-      user: req.session.user,
-      orders: ordersResponse.data || [],
-      inventory: inventoryResponse.data || []
-    });
-  } catch (error) {
-    console.error('Error loading dashboard:', error.message);
-    res.render('dashboard', {
-      user: req.session.user,
-      orders: [],
-      inventory: [],
-      error: 'Error al cargar los datos'
-    });
+    inventory = inventoryResponse.data || [];
+  } catch (inventoryError) {
+    console.error('Error loading inventory:', inventoryError.message);
   }
+
+  res.render('dashboard', {
+    user: req.session.user,
+    orders,
+    inventory,
+    message: req.query.message || null,
+    error
+  });
 });
 
-// Crear orden
 app.post('/orders', requireAuth, async (req, res) => {
   try {
-    const { product_id, quantity } = req.body;
+    const { customer, sku, quantity } = req.body;
 
     await axios.post(`${API_GATEWAY_URL}/orders`, {
-      product_id: parseInt(product_id),
-      quantity: parseInt(quantity)
+      customer,
+      items: [
+        {
+          sku,
+          qty: parseInt(quantity, 10)
+        }
+      ]
     }, {
       headers: { Authorization: `Bearer ${req.session.token}` }
     });
@@ -137,13 +137,11 @@ app.post('/orders', requireAuth, async (req, res) => {
   }
 });
 
-// Logout
 app.post('/logout', (req, res) => {
   req.session.destroy();
   res.redirect('/login');
 });
 
-// Health check
 app.get('/health', (req, res) => {
   res.json({ service: 'frontend-service', status: 'ok' });
 });

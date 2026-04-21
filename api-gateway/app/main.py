@@ -8,7 +8,7 @@ from auth import get_current_claims
 from redis_client import redis_client
 from schemas import OrderCreate
 from services.auth_client import proxy_auth_request
-from services.writer_client import send_order_to_writer
+from services.writer_client import fetch_orders_from_writer, send_order_to_writer
 
 app = FastAPI(title="API Gateway")
 
@@ -63,6 +63,8 @@ async def create_order(
         mapping={
             "status": "RECEIVED",
             "last_update": datetime.utcnow().isoformat(),
+            "created_by_user_id": claims["sub"],
+            "created_by_email": claims["email"],
         },
     )
 
@@ -95,6 +97,24 @@ async def create_order(
     }
 
 
+@app.get("/orders")
+async def list_orders(
+    request: Request,
+    claims: dict = Depends(get_current_claims),
+):
+    try:
+        orders = await fetch_orders_from_writer(request.headers.get("Authorization"))
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="Writer service unavailable") from error
+
+    for order in orders:
+        redis_data = redis_client.hgetall(f"order:{order['order_id']}")
+        order["status"] = redis_data.get("status", "UNKNOWN")
+        order["last_update"] = redis_data.get("last_update")
+
+    return orders
+
+
 @app.get("/orders/{order_id}")
 def get_order(order_id: str, claims: dict = Depends(get_current_claims)):
     redis_key = f"order:{order_id}"
@@ -103,9 +123,13 @@ def get_order(order_id: str, claims: dict = Depends(get_current_claims)):
     if not data:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    if claims.get("role") != "admin" and data.get("created_by_user_id") != str(claims["sub"]):
+        raise HTTPException(status_code=404, detail="Order not found")
+
     return {
         "order_id": order_id,
         "status": data.get("status"),
         "last_update": data.get("last_update"),
+        "created_by_email": data.get("created_by_email"),
         "requested_by": claims["email"],
     }

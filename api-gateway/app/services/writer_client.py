@@ -28,3 +28,17 @@ async def send_order_to_writer(order_payload: dict, request_id: str, authorizati
                 return False
 
     return False
+
+
+async def fetch_orders_from_writer(authorization: str | None):
+    url = f"{WRITER_SERVICE_URL}/internal/orders"
+    headers = {}
+
+    if authorization:
+        headers["Authorization"] = authorization
+
+    async with httpx.AsyncClient(timeout=WRITER_TIMEOUT_SECONDS) as client:
+        response = await client.get(url, headers=headers)
+
+    response.raise_for_status()
+    return response.json()

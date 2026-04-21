@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import Depends, FastAPI
+from sqlalchemy import text
 
 from auth import get_current_claims
 from db import SessionLocal, engine
@@ -17,6 +18,21 @@ app = FastAPI(title="Writer Service")
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
+    migrate_orders()
+
+
+def migrate_orders():
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by_user_id VARCHAR(50)"))
+        connection.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by_email VARCHAR(255)"))
+        connection.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS ix_orders_created_by_user_id
+                ON orders (created_by_user_id)
+                """
+            )
+        )
 
 
 @app.get("/health")
@@ -36,7 +52,7 @@ def create_order(order: InternalOrder, claims: dict = Depends(get_current_claims
         exists = repo.exists(order.order_id)
 
         if not exists:
-            repo.insert(order)
+            repo.insert(order, claims)
             publicar_orden_creada(
                 {
                     "event": "order.created",
@@ -58,5 +74,27 @@ def create_order(order: InternalOrder, claims: dict = Depends(get_current_claims
             "status": "PERSISTED",
             "requested_by": claims["email"],
         }
+    finally:
+        db.close()
+
+
+@app.get("/internal/orders")
+def list_orders(claims: dict = Depends(get_current_claims)):
+    db = SessionLocal()
+    try:
+        repo = OrdersRepository(db)
+        orders = repo.list_for_user(claims)
+
+        return [
+            {
+                "order_id": order.order_id,
+                "customer": order.customer,
+                "items": order.items or [],
+                "created_by_user_id": order.created_by_user_id,
+                "created_by_email": order.created_by_email,
+                "created_at": order.created_at,
+            }
+            for order in orders
+        ]
     finally:
         db.close()

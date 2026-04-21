@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI, HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from db import SessionLocal, engine
@@ -27,6 +28,31 @@ def get_db():
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
+    migrate_roles()
+
+
+def migrate_roles():
+    with engine.begin() as connection:
+        connection.execute(text("UPDATE users SET role = lower(role) WHERE role IS NOT NULL"))
+        connection.execute(text("UPDATE users SET role = 'user' WHERE role NOT IN ('admin', 'user') OR role IS NULL"))
+        connection.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'ck_users_role_valid'
+                    ) THEN
+                        ALTER TABLE users
+                        ADD CONSTRAINT ck_users_role_valid
+                        CHECK (role IN ('admin', 'user'));
+                    END IF;
+                END $$;
+                """
+            )
+        )
 
 
 @app.get("/health")
