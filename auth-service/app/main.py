@@ -100,6 +100,10 @@ def verify_token(claims: dict = Depends(get_current_claims)):
 
 
 @app.post("/auth/logout")
-def logout(token: str = Depends(get_current_token), claims: dict = Depends(get_current_claims)):
-    revoke_token(token, claims["exp"])
+def logout():
     return {"message": "Logged out successfully"}
+
+
+@app.get("/test")
+def test_endpoint():
+    return {"message": "Test endpoint works!"}
