@@ -5,5 +5,5 @@ jobs:
     runs-on: ubuntu-latest #Runner (maquina virtual) donde se ejecutará el job
     steps:
       -uses:actions/checkout@v4 #Paso 1, para clonar el repositorio
-      -run:echo "Hello CI" #Paso 2, para imprimir un mensaje en la consola
-      
+      -run:echo "Hello Anton" #Paso 2, para imprimir un mensaje en la consola
+
