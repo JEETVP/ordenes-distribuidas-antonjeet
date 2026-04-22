@@ -7,7 +7,7 @@ DATABASE_URL = os.getenv(
 
 REDIS_URL = os.getenv(
     "REDIS_URL",
-    "redis://redis:6379/0" #URL de redis
+    "redis://redis:6379/0" #URL de redisssss
 )
 
 RABBITMQ_URL = os.getenv(
