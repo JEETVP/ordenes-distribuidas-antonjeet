@@ -24,6 +24,8 @@ app.use(session({
 
 const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://localhost:8000';
 
+const isAdmin = (user) => user?.role === 'admin';
+
 const requireAuth = (req, res, next) => {
   if (!req.session.token) {
     return res.redirect('/login');
@@ -85,12 +87,17 @@ app.get('/dashboard', requireAuth, async (req, res) => {
   let orders = [];
   let inventory = [];
   let error = req.query.error || null;
+  const user = req.session.user;
 
   try {
     const ordersResponse = await axios.get(`${API_GATEWAY_URL}/orders`, {
       headers: { Authorization: `Bearer ${req.session.token}` }
     });
     orders = ordersResponse.data || [];
+
+    if (!isAdmin(user)) {
+      orders = orders.filter(order => String(order.created_by_user_id) === String(user.id));
+    }
   } catch (ordersError) {
     console.error('Error loading orders:', ordersError.message);
     error = error || 'Error al cargar las ordenes';
@@ -106,9 +113,10 @@ app.get('/dashboard', requireAuth, async (req, res) => {
   }
 
   res.render('dashboard', {
-    user: req.session.user,
+    user,
     orders,
     inventory,
+    ordersScope: isAdmin(user) ? 'all' : 'own',
     message: req.query.message || null,
     error
   });
@@ -137,9 +145,22 @@ app.post('/orders', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/logout', (req, res) => {
-  req.session.destroy();
-  res.redirect('/login');
+app.post('/logout', async (req, res) => {
+  const token = req.session.token;
+
+  if (token) {
+    try {
+      await axios.post(`${API_GATEWAY_URL}/auth/logout`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (error) {
+      console.error('Error revoking token:', error.message);
+    }
+  }
+
+  req.session.destroy(() => {
+    res.redirect('/login');
+  });
 });
 
 app.get('/health', (req, res) => {

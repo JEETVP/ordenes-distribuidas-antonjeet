@@ -13,6 +13,17 @@ from services.writer_client import fetch_orders_from_writer, send_order_to_write
 app = FastAPI(title="API Gateway")
 
 
+def _is_admin(claims: dict) -> bool:
+    return claims.get("role") == "admin"
+
+
+def _can_access_order(order: dict, claims: dict) -> bool:
+    if _is_admin(claims):
+        return True
+
+    return str(order.get("created_by_user_id")) == str(claims["sub"])
+
+
 @app.get("/health")
 def health():
     return {"service": "api-gateway", "status": "ok"}
@@ -107,12 +118,14 @@ async def list_orders(
     except Exception as error:
         raise HTTPException(status_code=502, detail="Writer service unavailable") from error
 
-    for order in orders:
+    visible_orders = [order for order in orders if _can_access_order(order, claims)]
+
+    for order in visible_orders:
         redis_data = redis_client.hgetall(f"order:{order['order_id']}")
         order["status"] = redis_data.get("status", "UNKNOWN")
         order["last_update"] = redis_data.get("last_update")
 
-    return orders
+    return visible_orders
 
 
 @app.get("/orders/{order_id}")
@@ -123,7 +136,7 @@ def get_order(order_id: str, claims: dict = Depends(get_current_claims)):
     if not data:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if claims.get("role") != "admin" and data.get("created_by_user_id") != str(claims["sub"]):
+    if not _can_access_order(data, claims):
         raise HTTPException(status_code=404, detail="Order not found")
 
     return {

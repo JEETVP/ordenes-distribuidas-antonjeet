@@ -72,7 +72,10 @@
             <div class="col-md-4">
                 <div class="card">
                     <div class="card-header">
-                        <h5><%= user.role === 'admin' ? 'Todas las Ordenes' : 'Mis Ordenes' %></h5>
+                        <h5><%= ordersScope === 'all' ? 'Todas las Ordenes' : 'Mis Ordenes' %></h5>
+                        <small class="text-muted">
+                            <%= ordersScope === 'all' ? 'Vista administrativa' : 'Solo pedidos creados por ti' %>
+                        </small>
                     </div>
                     <div class="card-body">
                         <% if (orders.length > 0) { %>
@@ -92,7 +95,7 @@
                                                 <%= order.items.map(item => `${item.sku} x${item.qty}`).join(', ') %>
                                             </small>
                                         <% } %>
-                                        <% if (user.role === 'admin' && order.created_by_email) { %>
+                                        <% if (ordersScope === 'all' && order.created_by_email) { %>
                                             <br>
                                             <small class="text-muted">Creada por <%= order.created_by_email %></small>
                                         <% } %>
