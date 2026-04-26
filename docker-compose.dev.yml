@@ -2,3 +2,24 @@ services:
   api-gateway:
     environment:
       LOG_LEVEL: DEBUG
+
+  tests:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile
+    environment:
+      PYTHONUNBUFFERED: 1
+      DOCKER_ENV: "true"
+    depends_on:
+      api-gateway:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      writer-service:
+        condition: service_started
+      inventory-service:
+        condition: service_started
+    stdin_open: true
+    tty: true
+    profiles:
+      - test
