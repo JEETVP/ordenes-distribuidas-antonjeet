@@ -106,7 +106,9 @@ async def list_orders(
     try:
         orders = await fetch_orders_from_writer(request.headers.get("Authorization"))
     except Exception as error:
-        raise HTTPException(status_code=502, detail="Writer service unavailable") from error
+        raise HTTPException(
+            status_code=502, detail="Writer service unavailable"
+        ) from error
 
     for order in orders:
         redis_data = redis_client.hgetall(f"order:{order['order_id']}")
@@ -124,7 +126,9 @@ def get_order(order_id: str, claims: dict = Depends(get_current_claims)):
     if not data:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if claims.get("role") != "admin" and data.get("created_by_user_id") != str(claims["sub"]):
+    if claims.get("role") != "admin" and data.get("created_by_user_id") != str(
+        claims["sub"]
+    ):
         raise HTTPException(status_code=404, detail="Order not found")
 
     return {

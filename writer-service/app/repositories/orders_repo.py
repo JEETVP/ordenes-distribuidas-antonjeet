@@ -2,14 +2,14 @@ from models import Order
 
 
 class OrdersRepository:
-
     def __init__(self, session):
         self.session = session  # conexion con la base de datos
 
     def exists(self, order_id):  # verifica que no haya otro objeto con el mismo id
-        return self.session.query(Order)\
-            .filter(Order.order_id == order_id)\
-            .first() is not None
+        return (
+            self.session.query(Order).filter(Order.order_id == order_id).first()
+            is not None
+        )
 
     def insert(self, order, claims):
         db_order = Order(

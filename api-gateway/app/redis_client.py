@@ -1,8 +1,5 @@
 import redis
 from config import REDIS_URL
 
-redis_client = redis.Redis.from_url(
-    REDIS_URL,
-    decode_responses=True
-)
-#conexion para leer y escribir los estados de cada orden
+redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+# conexion para leer y escribir los estados de cada orden

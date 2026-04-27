@@ -13,4 +13,4 @@ class InternalOrder(BaseModel):
     items: List[Item]
 
 
-#unico cambio que tiene para recibir las ordenes del apigateway es que ya recibi un order id por que en este punto el flujo ya le asigno uno como tal
+# unico cambio que tiene para recibir las ordenes del apigateway es que ya recibi un order id por que en este punto el flujo ya le asigno uno como tal

@@ -11,4 +11,5 @@ class OrderCreate(BaseModel):
     customer: str
     items: List[Item]
 
-#Define como deben de estar ordenados los campos al momento de que se van a mandar para el POST
+
+# Define como deben de estar ordenados los campos al momento de que se van a mandar para el POST

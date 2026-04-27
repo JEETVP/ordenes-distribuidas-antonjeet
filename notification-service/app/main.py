@@ -6,11 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from config import NOTIFICATION_QUEUE, ORDERS_EXCHANGE, RABBITMQ_URL, DATABASE_URL
 from models import Base, Notification
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=300
-)
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
 
 SessionLocal = sessionmaker(bind=engine)
 
@@ -23,7 +19,7 @@ def guardar_notificacion(data):
             customer=data.get("customer"),
             event_type=data.get("event_type", "order.created"),
             message=f"Orden {data.get('order_id')} confirmada para {data.get('customer')}",
-            reason=data.get("reason")
+            reason=data.get("reason"),
         )
         session.add(notif)
         session.commit()
@@ -67,26 +63,17 @@ def main():
             canal = conexion.channel()
 
             canal.exchange_declare(
-                exchange=ORDERS_EXCHANGE,
-                exchange_type="fanout",
-                durable=True
+                exchange=ORDERS_EXCHANGE, exchange_type="fanout", durable=True
             )
 
-            canal.queue_declare(
-                queue=NOTIFICATION_QUEUE,
-                durable=True
-            )
+            canal.queue_declare(queue=NOTIFICATION_QUEUE, durable=True)
 
-            canal.queue_bind(
-                exchange=ORDERS_EXCHANGE,
-                queue=NOTIFICATION_QUEUE
-            )
+            canal.queue_bind(exchange=ORDERS_EXCHANGE, queue=NOTIFICATION_QUEUE)
 
             canal.basic_qos(prefetch_count=1)
 
             canal.basic_consume(
-                queue=NOTIFICATION_QUEUE,
-                on_message_callback=procesar_evento
+                queue=NOTIFICATION_QUEUE, on_message_callback=procesar_evento
             )
 
             print("[OK] notification-service esperando eventos...")

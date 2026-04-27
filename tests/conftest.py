@@ -1,4 +1,5 @@
 """Configuración compartida y fixtures para tests E2E"""
+
 import pytest
 import requests
 import uuid
@@ -44,14 +45,14 @@ def registered_user(client, service_urls, test_credentials):
     """
     email = test_credentials["email"]
     password = test_credentials["password"]
-    
+
     response = client.post(
         f"{service_urls['gateway']}/auth/register",
         json={"email": email, "password": password},
     )
-    
+
     assert response.status_code == 201, f"Registro fallido: {response.text}"
-    
+
     return {
         "email": email,
         "password": password,
@@ -70,18 +71,18 @@ def authenticated_user(client, service_urls, registered_user):
     """
     email = registered_user["email"]
     password = registered_user["password"]
-    
+
     response = client.post(
         f"{service_urls['gateway']}/auth/login",
         json={"email": email, "password": password},
     )
-    
+
     assert response.status_code == 200, f"Login fallido: {response.text}"
-    
+
     data = response.json()
     token = data.get("access_token")
     assert token, "No se obtuvo token"
-    
+
     return {
         "token": token,
         "email": email,

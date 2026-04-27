@@ -5,7 +5,6 @@ Base = declarative_base()
 
 
 class Order(Base):
-
     __tablename__ = "orders"
 
     order_id = Column(String(36), primary_key=True)
@@ -15,4 +14,4 @@ class Order(Base):
     created_by_email = Column(String(255), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
-    #es lo que va a guardar la base de datos.
+    # es lo que va a guardar la base de datos.

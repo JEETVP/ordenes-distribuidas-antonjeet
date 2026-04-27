@@ -33,10 +33,14 @@ def main():
             conexion = pika.BlockingConnection(parametros)
             canal = conexion.channel()
             # este exchange es el mismo que usa writer-service al publicar
-            canal.exchange_declare(exchange=ORDERS_EXCHANGE, exchange_type="fanout", durable=True)
+            canal.exchange_declare(
+                exchange=ORDERS_EXCHANGE, exchange_type="fanout", durable=True
+            )
             canal.queue_declare(queue=ANALYTICS_QUEUE, durable=True)
             canal.queue_bind(exchange=ORDERS_EXCHANGE, queue=ANALYTICS_QUEUE)
-            canal.basic_consume(queue=ANALYTICS_QUEUE, on_message_callback=procesar_evento)
+            canal.basic_consume(
+                queue=ANALYTICS_QUEUE, on_message_callback=procesar_evento
+            )
             print("analytics-service esperando eventos order.created")
             canal.start_consuming()
         except Exception as error:

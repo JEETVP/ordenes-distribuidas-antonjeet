@@ -23,8 +23,16 @@ def startup():
 
 def migrate_orders():
     with engine.begin() as connection:
-        connection.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by_user_id VARCHAR(50)"))
-        connection.execute(text("ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by_email VARCHAR(255)"))
+        connection.execute(
+            text(
+                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by_user_id VARCHAR(50)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_by_email VARCHAR(255)"
+            )
+        )
         connection.execute(
             text(
                 """

@@ -11,7 +11,9 @@ def publicar_orden_creada(mensaje: dict) -> None:
 
     try:
         canal = conexion.channel()
-        canal.exchange_declare(exchange=ORDERS_EXCHANGE, exchange_type="fanout", durable=True)
+        canal.exchange_declare(
+            exchange=ORDERS_EXCHANGE, exchange_type="fanout", durable=True
+        )
         canal.basic_publish(
             exchange=ORDERS_EXCHANGE,
             routing_key="",

@@ -33,8 +33,14 @@ def startup():
 
 def migrate_roles():
     with engine.begin() as connection:
-        connection.execute(text("UPDATE users SET role = lower(role) WHERE role IS NOT NULL"))
-        connection.execute(text("UPDATE users SET role = 'user' WHERE role NOT IN ('admin', 'user') OR role IS NULL"))
+        connection.execute(
+            text("UPDATE users SET role = lower(role) WHERE role IS NOT NULL")
+        )
+        connection.execute(
+            text(
+                "UPDATE users SET role = 'user' WHERE role NOT IN ('admin', 'user') OR role IS NULL"
+            )
+        )
         connection.execute(
             text(
                 """
@@ -60,13 +66,17 @@ def health():
     return {"service": "auth-service", "status": "ok"}
 
 
-@app.post("/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@app.post(
+    "/auth/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED
+)
 def register_user(payload: UserRegister, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
     existing_user = db.query(User).filter(User.email == email).first()
 
     if existing_user is not None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
+        )
 
     user = User(
         email=email,
@@ -86,10 +96,14 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email).first()
 
     if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+        )
 
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user"
+        )
 
     token, expires_in = create_access_token(str(user.id), user.email, user.role)
     return TokenResponse(
@@ -104,12 +118,16 @@ def me(claims: dict = Depends(get_current_claims), db: Session = Depends(get_db)
     try:
         user_id = int(claims["sub"])
     except (TypeError, ValueError) as error:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject") from error
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject"
+        ) from error
 
     user = db.query(User).filter(User.id == user_id).first()
 
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not available")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not available"
+        )
 
     return {
         "sub": claims["sub"],

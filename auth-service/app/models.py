@@ -1,4 +1,12 @@
-from sqlalchemy import Boolean, CheckConstraint, Column, Integer, String, TIMESTAMP, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    Integer,
+    String,
+    TIMESTAMP,
+    func,
+)
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()

@@ -24,13 +24,13 @@ def _procesar_mensaje(ch, method, properties, body):
 
         db.commit()
 
-        print(
-            f"inventory-service desconto stock de la orden {mensaje.get('order_id')}"
-        )
+        print(f"inventory-service desconto stock de la orden {mensaje.get('order_id')}")
         ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as error:
         db.rollback()
-        print(f"inventory-service fallo con la orden {mensaje.get('order_id')}: {error}")
+        print(
+            f"inventory-service fallo con la orden {mensaje.get('order_id')}: {error}"
+        )
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
     finally:
         db.close()
@@ -44,11 +44,15 @@ def _consumir():
             conexion = pika.BlockingConnection(parametros)
             canal = conexion.channel()
             # si la cola no existe rabbit la crea y la deja lista
-            canal.exchange_declare(exchange=ORDERS_EXCHANGE, exchange_type="fanout", durable=True)
+            canal.exchange_declare(
+                exchange=ORDERS_EXCHANGE, exchange_type="fanout", durable=True
+            )
             canal.queue_declare(queue=INVENTORY_QUEUE, durable=True)
             canal.queue_bind(exchange=ORDERS_EXCHANGE, queue=INVENTORY_QUEUE)
             canal.basic_qos(prefetch_count=1)
-            canal.basic_consume(queue=INVENTORY_QUEUE, on_message_callback=_procesar_mensaje)
+            canal.basic_consume(
+                queue=INVENTORY_QUEUE, on_message_callback=_procesar_mensaje
+            )
             canal.start_consuming()
         except Exception as error:
             print(f"inventory-service reconectando consumidor: {error}")
