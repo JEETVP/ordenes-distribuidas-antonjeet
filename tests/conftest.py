@@ -12,7 +12,7 @@ def service_urls():
     return settings.get_service_urls()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def test_credentials():
     """Credenciales de prueba"""
     email = f"test-{datetime.now().timestamp()}@example.com"
