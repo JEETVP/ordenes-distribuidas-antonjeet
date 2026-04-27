@@ -93,6 +93,7 @@ async def create_order(
     return {
         "order_id": order_id,
         "status": "RECEIVED",
+        "customer": order.customer,
         "requested_by": claims["email"],
     }
 
