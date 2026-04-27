@@ -22,7 +22,7 @@ jobs:
         run: cp .env.example .env
 
       - name: Install test dependencies
-        run: python -m pip install -r requirements-test.txt
+        run: python3 -m pip install -r requirements-test.txt
 
       - name: Validate Docker Compose config
         run: docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env config
@@ -46,7 +46,7 @@ jobs:
           done
 
       - name: Run E2E tests
-        run: python -m pytest tests/test_e2e.py
+        run: PYTHONPATH=tests python3 -m pytest tests/test_e2e.py
 
       - name: Show logs on failure
         if: failure()
