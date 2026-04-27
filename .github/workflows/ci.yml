@@ -24,6 +24,17 @@ jobs:
       - name: Install test dependencies
         run: python3 -m pip install -r requirements-test.txt
 
+      - name: Install Ruff
+        run: |
+          python3 -m pip install ruff==0.15.12
+          ruff --version
+
+      - name: Run Ruff lint
+        run: ruff check .
+
+      - name: Run Ruff format check
+        run: ruff format --check .
+
       - name: Validate Docker Compose config
         run: docker compose -f docker-compose.yml -f docker-compose.dev.yml --env-file .env config
 
